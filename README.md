@@ -3,38 +3,50 @@
 This repository is part of my master thesis exploring mental health stigma and cardiovascular disease (CVD) outcomes.
 
 ##🧠 Project Overview
-The thesis looks into evidence around stigma and CVD-related outcomes
-The goal is to map out existing research evidence and identify gaps, particularly around structural stigma. 
+This thesis systematically maps out the existing research on how different types of mental health stigma — self, public, and structural — are associated with CVD-related outcomes.
 
 ---
 ##📁 Repository Structure
 
 - `/data` - Raw and cleaned datasets used for analysis
 - `/scripts` – R scripts for data cleaning, deduplication, visualization, and matrix generation
-- `/figures` – All final figures used in the thesis (heatmaps, maps, bar charts, etc.)
+- `/figures` – final figures used in the thesis (heatmaps, maps, bar charts, etc.)
 - `/docs` – Final thesis manuscript (PDF)
-- `README.md` – This file
+- `README.md` – Project Overview (this file)
 - `LICENSE` – MIT License (or another, if updated)
 
-## 📊 How to Reproduce the Analysis
+## 📊 Reproduce the Analysis
 
-To reproduce the analysis in R:
+1. Open `scripts/01_cleaning_deduplicates_maps_charts.Rmd` in RStudio  
+2. Run or knit the file to regenerate:
+   - Bar chart: Number of studies per year  
+   - Map: Geographic distribution of studies  
+   - Heatmap: Stigma type × CVD outcome matrix  
+3. Output images will be saved to the `figures/` folder
 
-1. Open `scripts/01_cleaning_and_deduplication.R`
-2. Run all scripts in order from `scripts/`
-3. Output figures will appear in the `figures/` directory
+All required R packages are listed at the top of the script. Run `install.packages()` if needed.
 
-All required R packages are listed at the top of each script.
+---
+## 🧾 Data Availability
 
-## 🚨 Status
+All data and code are publicly available in this repository.  
+To replicate or inspect the results, see:
+
+- `data/cleaned_data.csv`  
+- `scripts/01_cleaning_deduplicates_maps_charts.Rmd`
+
+---
+
+## 🚀 Project Status
 
 **✅ Complete**  
-This project is finalized and reflects the data and analyses submitted as part of my thesis.
+This repository reflects the final analysis and figures submitted for my thesis.
 
+---
 ## 📘 License
 
-MIT License. See `LICENSE` file for details.
+This project is licensed under the MIT License.  
+See the `LICENSE` file for more details.
 
 ## 🔗 Contact
-
 For questions, feel free to contact me via GitHub or at [kadyn1798@gmail.com].
