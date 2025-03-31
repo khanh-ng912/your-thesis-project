@@ -1,0 +1,330 @@
+---
+title: "Cleaning and Matrix Plot Map Script"
+output: html_document
+author: Khanh Nguyen 
+Description: This script cleans and deduplicates stigma-CVD data, simplifies outcomes, and generates bar chart, heatmap matrix, and a map
+date: "`r Sys.Date()`"
+---
+
+## R Markdown
+
+```{r setup, include=FALSE}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+```{r packages}
+library(readr)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(ggplot2)
+library(tidyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggrepel)
+```
+
+
+```{r load-data}
+# 1.Load the data
+df <- read.csv("C:/Users/kadyn/Downloads/Data_Extraction_Form(Sheet1) (1).csv",
+                            header = TRUE, 
+                            stringsAsFactors = FALSE, 
+                            fileEncoding = "latin1")
+```
+
+```{r deduplication}
+# 2.Trim column names and remove non-breaking spaces 
+colnames(df) <- str_replace_all(str_trim(colnames(df)), "\\u00a0", " ")
+df
+
+# 3. Clean all character fields 
+df <- df %>%
+  mutate(across(where(is.character), ~ str_replace_all(str_trim(.), "\\u00a0", " ")))
+df
+
+#4. Normalize Title and DOI
+normalize_text <- function(text) {
+  text %>%
+    str_to_lower() %>%
+    str_replace_all("[[:punct:][:space:]]+", " ") %>%
+    str_replace_all("[^[:alnum:] ]", "") %>%
+    str_squish()
+}
+
+df <- df %>%
+  mutate(
+    title_key = normalize_text(`Title.`),
+    doi_key = normalize_text(DOI),
+    dedupe_key = ifelse(doi_key != "", doi_key, title_key)
+  )
+df
+
+#5. Improved aggregation (first non-empty value per column)
+first_non_empty <- function(x) {
+  x <- x[!is.na(x) & x!= ""]
+  if (length(x) == 0) return(NA)
+  return(x[1])
+}
+
+# 6. Group by cleaned title and merge all values (deduplicate)
+df_final <- df %>%
+  mutate(title_clean_key = normalize_text(`Title.`)) %>%
+  group_by(title_clean_key) %>%
+  summarise(across(everything(), first_non_empty), .groups = "drop") %>%
+  select(-title_clean_key)
+
+# 8. 
+df_final
+
+#9. Replace bad DOI text with NA 
+df_final <- df_final %>%
+  mutate(DOI = ifelse(
+    str_detect(str_to_lower(DOI), "n/a|the document does not provide a doi"),
+    NA_character_,
+    DOI
+  ))
+
+# 10. Replace "not provided" (in any case) with NA across all character columns
+## Define a regex pattern of placeholder responses
+na_patterns <- "^(n\\.?a\\.?|n/a|not provided|not stated|not specified|Not specified)$"
+
+## Replace those patterns with NA across all character columns
+df_final <- df_final %>%
+  mutate(across(where(is.character), ~ ifelse(str_detect(str_to_lower(str_trim(.)), na_patterns), NA_character_, .)))
+
+#11. extract numeric values from text and return the average
+extract_avg <- function(x) {
+  if (is.na(x) || x == "") return(NA_real_)
+  
+  nums <- str_extract_all(x, "\\d+\\.?\\d*")[[1]]
+  nums <- as.numeric(nums)
+  
+  if (length(nums) == 0) return(NA_real_)
+  return(round(mean(nums, na.rm = TRUE), 2))
+}
+
+df_final <- df_final %>%
+  mutate(reported_mean_age = ifelse(
+    str_detect(reported_mean_age, "\\d+\\.?\\d+"),
+    as.character(map_dbl(reported_mean_age, extract_avg)),
+    reported_mean_age
+  ))
+
+df_final <- df_final %>%
+  mutate(reported_standard_deviation_age = ifelse(
+    str_detect(reported_standard_deviation_age, "\\d+\\.?\\d+"),
+    as.character(map_dbl(reported_standard_deviation_age, extract_avg)),
+    reported_standard_deviation_age
+  ))
+
+df_final <- df_final %>%
+  mutate(reported_male_distribution = ifelse(
+    str_detect(reported_male_distribution, "\\d+"),
+    paste0(map_dbl(reported_male_distribution, extract_avg), "%"),
+    reported_male_distribution
+  ))
+
+df_final <- df_final %>%
+  mutate(reported_female_distribution = ifelse(
+    str_detect(reported_female_distribution, "\\d+"),
+    paste0(map_dbl(reported_female_distribution, extract_avg), "%"),
+    reported_female_distribution
+  ))
+
+df_final <- df_final %>%
+  mutate(Study_population_location = str_replace_all(
+    Study_population_location,
+    regex("London, UK", ignore_case = TRUE),
+    "United Kingdom"
+  ))
+
+df_final <- df_final %>%
+  mutate(types_of_stigma = ifelse(
+    str_detect(str_to_lower(str_trim(types_of_stigma)), "^not specified\\s*;?$"),
+    NA_character_,
+    types_of_stigma
+  ))
+
+df_final
+library(readr)
+write_csv(df_final, "cleaned_data.csv")
+dir.create("data", showWarnings = FALSE)
+```
+
+```{r}
+#12. Plot bar chart 
+##Make sure 'Years.' column is numeric 
+df_final <- df_final %>%
+  mutate(Years = as.numeric(Years.))
+
+##Create summary of studies per year
+df_year_summary <- df_final %>%
+  mutate(Years = as.numeric(Years)) %>%
+  filter(!is.na(Years)) %>%
+  group_by(Years) %>%
+  summarise(num_studies = n(), .groups = "drop")
+
+##Create a complete list of years
+all_years <- data.frame(Years = seq(min(df_year_summary$Years), max(df_year_summary$Years)))
+
+##Merge and fill missing years with 0
+df_year_complete <- all_years %>%
+  left_join(df_year_summary, by = "Years") %>%
+  mutate(num_studies = replace_na(num_studies, 0))
+```
+
+```{r plot-bar-chart}
+##Plot the chart
+ggplot(df_year_complete, aes(x = Years, y = num_studies)) +
+  geom_col(fill = "steelblue", width = 0.5) +
+  scale_x_continuous(
+    breaks = df_year_complete$Years,
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Number of Studies per Year",
+    x = "Year",
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 8) +
+  theme(
+    axis.text.x = element_text(size = 5, angle = 45, hjust = 1),
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.5)
+  )
+```
+
+```{r}
+#13. Summarize your country counts 
+country_data <- df_final %>%
+  count(Study_population_location, name = "study_count") %>%
+  rename(country = Study_population_location)
+
+##Load world map 
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+##Merge country counts into map
+map_data <- world %>%
+  left_join(country_data, by = c("name" = "country"))
+
+##Filter for countries with studies 
+map_data_labeled <- map_data %>%
+  filter(!is.na(study_count))
+```
+
+```{r plot-map-world}
+##Plot
+ggplot() +
+  geom_sf(data = world, fill = "white", color = "gray60", size = 0.3) +
+  geom_sf(data = map_data_labeled, fill = "#9ecae1", color = "black", size = 0.3) +
+  geom_label_repel(
+    data = map_data_labeled,
+    aes(geometry = geometry, label = paste0(name, " (", study_count, ")")),
+    stat = "sf_coordinates",
+    seed = 42,
+    fill = "white",
+    label.size = 0.3,
+    color = "navyblue",
+    fontface = "bold",
+    box.padding = 0.4,
+    label.padding = unit(0.15, "lines"),
+    label.r = unit(0.05, "lines"),
+    size = 2.8,
+    max.overlaps = Inf
+  ) +
+  coord_sf(xlim = c(-180, 180), ylim = c(-60, 90), expand = FALSE) +  # ⬅ Fix here
+  labs(title = "Geographic Distribution of Studies") +
+  theme_void() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+```
+
+```{r matrix}
+# Create df_matrix from your cleaned data
+df_expanded <- df_final %>%
+  select(types_of_stigma, outcomes_reported.) %>%
+  filter(!is.na(types_of_stigma), !is.na(outcomes_reported.)) %>%
+  separate_rows(types_of_stigma, sep = ";") %>%
+  separate_rows(outcomes_reported., sep = ";") %>%
+  mutate(
+    types_of_stigma = str_to_lower(str_trim(types_of_stigma)),
+    outcomes_reported. = str_to_lower(str_trim(outcomes_reported.)),
+    outcomes_reported. = case_when(
+      str_detect(outcomes_reported., "pressure") ~ "blood pressure",
+      str_detect(outcomes_reported., "cholesterol") ~ "cholesterol",
+      str_detect(outcomes_reported., "disease progression") ~ "disease progression",
+      str_detect(outcomes_reported., "hospital") ~ "hospitalization",
+      str_detect(outcomes_reported., "incidence") ~ "incidence of new cvd",
+      str_detect(outcomes_reported., "hrv") ~ "hrv",
+      str_detect(outcomes_reported., "mace") ~ "mace",
+      str_detect(outcomes_reported., "medication adherence") ~ "medication adherence",
+      str_detect(outcomes_reported., "mortality") ~ "mortality",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(outcomes_reported.))
+df_expanded
+#Count pairs
+df_matrix <- df_expanded %>%
+  count(types_of_stigma, outcomes_reported.)
+df_matrix
+
+
+full_matrix <- expand.grid(
+  types_of_stigma = c("self-stigma", "public stigma", "structural stigma"),
+  outcomes_reported. = c("blood pressure", "cholesterol", "disease progression", 
+                         "hospitalization", "incidence of new cvd", "hrv", 
+                         "mace", "medication adherence", "mortality"),
+  stringsAsFactors = FALSE
+) %>%
+  left_join(df_matrix, by = c("types_of_stigma", "outcomes_reported.")) %>%
+  mutate(
+    n = replace_na(n, 0),
+    n = factor(n, levels = as.character(0:7))
+  )
+
+
+full_matrix
+
+#Define color scale from light to dark
+count_colors <- c(
+  "0" = "#f7fbff",
+  "1" = "#deebf7",
+  "2" = "#c6dbef",
+  "3" = "#9ecae1",
+  "4" = "#6baed6",
+  "5" = "#4292c6",
+  "6" = "#2171b5",
+  "7" = "#084594"
+)
+```
+
+```{r plot-heatmap}
+ggplot(full_matrix, aes(x = outcomes_reported., y = types_of_stigma, fill = n)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = as.character(n)), size = 2.5) +
+  scale_fill_manual(values = count_colors, name = "Count", drop = FALSE) +
+  labs(
+    title = "Stigma Type × CVD Outcome Matrix",
+    x = "CVD Outcomes",
+    y = "Stigma Types"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+
+
+
+
+
+
+
+
