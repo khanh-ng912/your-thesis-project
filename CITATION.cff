@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this project, please cite it as below."
+title: " Mental Health Stigma and Cardiovascular Disease Outcomes and Care Among Asian Patients: A Scoping Review"
+authors:
+  - family-names: Nguyen
+    given-names: Khanh
+date-released: 2024-03-31  # Update to your thesis completion date
+version: 1.0.0
+doi: ""  
+url: https://github.com/yourusername/thesis-stigma-cvd
+license: MIT
+keywords:
+  - stigma
+  - cardiovascular disease
+  - mental health 
+  - R
+  - public health
+  - scoping review 
+type: thesis
