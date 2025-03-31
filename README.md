@@ -11,7 +11,6 @@ This thesis systematically maps out the existing research on how different types
 - `/data` - Raw and cleaned datasets used for analysis
 - `/scripts` – R scripts for data cleaning, deduplication, visualization, and matrix generation
 - `/figures` – final figures used in the thesis (heatmaps, maps, bar charts, etc.)
-- `/docs` – Final thesis manuscript (PDF)
 - `README.md` – Project Overview (this file)
 - `LICENSE` – MIT License (or another, if updated)
 
